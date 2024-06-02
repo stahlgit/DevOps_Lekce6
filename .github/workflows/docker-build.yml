@@ -2,34 +2,36 @@ name: Docker Build and Push to ECR
 
 on:
   push:
-    branches:
-      - main
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
   workflow_dispatch:
 
 jobs:
-  build:
+  login-to-amazon-ecr:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+      - name: Login to Amazon ECR Public
+        id: login-ecr-public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
 
-      - name: Log in to Amazon ECR Public
-        id: login-ecr
-        run: |
-          aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws/m7w0w0j5
+      - name: Build, Tag and Push Docker Image to Amazon ECR Public
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Build Docker image
-        run: docker build -t devops_lekce6 .
-
-      - name: Tag Docker image
-        run: docker tag devops_lekce6:latest public.ecr.aws/m7w0w0j5/devops_lekce6:latest
-
-      - name: Push Docker image to Amazon ECR Public
-        run: docker push public.ecr.aws/m7w0w0j5/devops_lekce6:latest
+          REGISTRY: ${{ steps.login-ecr-public.outputs.registry }}
+          REGISTRY_ALLIAS: m7w0w0j5
+          REPOSITORY: devops_lekce6
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$REGISTRY_ALLIAS/$REPOSITORY:$IMAGE_TAG .
+          docker push $REGISTRY/$REGISTRY_ALLIAS/$REPOSITORY:$IMAGE_TAG
